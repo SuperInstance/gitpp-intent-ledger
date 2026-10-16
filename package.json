@@ -1,0 +1,15 @@
+{
+  "name": "gitpp-intent-ledger",
+  "version": "0.1.0",
+  "description": "Append-only intent ledger for git.pp nudges: proposal, gate decision + confidence, and derived outcome per nudge, with a whole-history check for landings the gate did not authorise and authorisations that never landed.",
+  "type": "module",
+  "main": "intent-ledger.mjs",
+  "bin": { "gitpp-intent-ledger": "./intent-ledger.mjs" },
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "example": "node intent-ledger.mjs example",
+    "selftest": "node intent-ledger.mjs selftest",
+    "check": "node intent-ledger.mjs check --ledger ledger.jsonl --records records.json"
+  },
+  "license": "MIT"
+}

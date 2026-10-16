@@ -1,0 +1,89 @@
+[
+  {
+    "id": "task-0001",
+    "kind": "task",
+    "parents": [],
+    "effects": {
+      "release.channel": "stable"
+    },
+    "reason": "ship stable"
+  },
+  {
+    "id": "task-0002",
+    "kind": "task",
+    "parents": [],
+    "effects": {
+      "build.green": true
+    },
+    "reason": "ci green"
+  },
+  {
+    "id": "witness-0003",
+    "kind": "witness",
+    "parents": [
+      "task-0002"
+    ],
+    "effects": {
+      "build.green": false
+    },
+    "reason": "flaked once"
+  },
+  {
+    "id": "task-0004",
+    "kind": "task",
+    "parents": [],
+    "effects": {
+      "version": "0.3.0"
+    },
+    "reason": "current release"
+  },
+  {
+    "id": "nudge-0006",
+    "kind": "task",
+    "parents": [
+      "task-0004"
+    ],
+    "effects": {
+      "version": "0.4.0"
+    },
+    "reason": "cut 0.4.0"
+  },
+  {
+    "id": "override-0007",
+    "kind": "override",
+    "parents": [],
+    "effects": {
+      "release.channel": "bleeding"
+    },
+    "reason": "yolo"
+  },
+  {
+    "id": "override-0008",
+    "kind": "override",
+    "parents": [],
+    "effects": {
+      "docs.owner": "wesley"
+    },
+    "reason": "docs are mine"
+  },
+  {
+    "id": "override-0010",
+    "kind": "override",
+    "parents": [],
+    "effects": {
+      "build.green": true
+    },
+    "reason": "rerun is green, ignore"
+  },
+  {
+    "id": "nudge-0009",
+    "kind": "task",
+    "parents": [
+      "task-0002"
+    ],
+    "effects": {
+      "build.green": false
+    },
+    "reason": "re-run failed"
+  }
+]
