@@ -80,7 +80,7 @@ GATE CALIBRATION
 
 ```bash
 node intent-ledger.mjs example                    # the worked example, end to end
-node intent-ledger.mjs selftest                   # 43 assertions
+node intent-ledger.mjs selftest                   # 45 assertions
 node intent-ledger.mjs example --out ./fixture    # write ledger.jsonl + records.json
 node intent-ledger.mjs check --ledger ledger.jsonl --records records.json
 node intent-ledger.mjs check --ledger ledger.jsonl --records records.json --deep
@@ -244,21 +244,34 @@ mis-parenting demo — but conformance to the referee's corpus is unverified.
 
 ## The optional live path — measured, not claimed
 
-`liveGate()` exists so the fixture can be shown to be a real shape. It is **not** used by the check
-and **not** used by the example. Measured against `api.typesafe.ai` during the build:
+`liveGate()` exists so the fixture can be checked against a real endpoint. It is **not** used by the
+check, **not** used by the example, and **not** imported by `intent-ledger.mjs`.
 
 ```
 $ node livegate-probe.mjs
-well-founded (staged canary)            -> ERROR  Jev 503: upstream connect error … TLS_error
-unjustified (promote straight to prod)  -> BLOCK  apply=null parent=null  [typesafe:jev]
+well-founded (staged canary)       -> REVIEW apply=0.54 parent=0.54  [typesafe:jev]
+unjustified (promote to prod)      -> REVIEW apply=0.04 parent=0.50  [typesafe:jev]
 ```
 
-Both outcomes are correct behaviour: the transport failed (throws) and the second returned no
-usable calibrated numbers (**fails closed to `block`**). The endpoint is intermittently returning
-`503` with upstream TLS errors, so **do not treat this path as reliable**, and do not read the
-second line as a measured judgement — it is the fail-closed branch doing its job. Node's `fetch`
-also cannot be told to skip certificate verification, which is why `curl -k` was needed to probe it
-at all.
+**This reproduces §5.7's own measurement, live.** The spec records that "a well-founded nudge scored
+0.35 and an unjustified one 0.07 — real separation at the wrong scale, so a cutoff that admits the
+bad case also blocks the good one." Here: **0.54 vs 0.04**, an even cleaner separation, and both
+still route to `review`. Neither blocks. That is the whole justification for the asymmetry in
+`gateDecide` — weak *intent* reviews and never blocks, while the *parent* gate, which does separate,
+carries the blocking. The adapter's routing is doing exactly what the spec says it should.
+
+It also caught a bug in this file. `liveGate` originally passed its numbers as a fixture object keyed
+by `apply`/`parent`; `gateDecide` looks fixtures up **by nudge id**, so the lookup missed every time
+and every live probe silently returned `BLOCK`. That is indistinguishable from a model having no
+opinion — which is precisely the failure mode §5.7 exists to prevent, appearing in the PoC built to
+prevent it. The fixture is now a function, and a self-test pins both the function form and the
+keyed-miss-fails-closed behaviour.
+
+**Caveat:** `api.typesafe.ai` is intermittently returning `503 upstream connect error` with
+underlying TLS failures, so this path is flaky and should be treated as a smoke test. When the
+transport fails it throws; when it returns no usable calibrated numbers it **fails closed to
+`block`**. Both are correct. Node's `fetch` also cannot be told to skip certificate verification,
+which is why probing it at all needs `curl -k`.
 
 Gate data in the core check is a fixture. Always.
 

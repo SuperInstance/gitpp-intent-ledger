@@ -575,13 +575,17 @@ export async function liveGate(proposal, context, opts = {}) {
     {
       threshold: opts.threshold,
       source: "typesafe:jev",
-      fixture: {
+      // A FUNCTION fixture, not a keyed one. The keyed form is looked up by
+      // nudge id; an object with `apply`/`parent` keys is simply never found,
+      // which fails closed and looks exactly like a model that had no opinion.
+      // That bug shipped once in this file and the probe caught it.
+      fixture: () => ({
         apply: typeof answers?.should_apply?.noul === "number" ? answers.should_apply.noul : null,
         parent:
           typeof answers?.parent_is_current_setter?.noul === "number"
             ? answers.parent_is_current_setter.noul
             : null,
-      },
+      }),
     },
   );
 }
@@ -908,6 +912,29 @@ export function check(ledger, records, opts = {}) {
       }),
     );
     if (sev === "critical") unauthorised.push(id);
+  }
+
+  // ---- 2b. say out loud what this check CANNOT see -------------------------
+  // Q1 walks the current winners. A record that landed and was LATER
+  // displaced is no longer a winner, so Q1 cannot see it — and "was it ever a
+  // winner?" is unanswerable without a snapshot taken at the time. Rather
+  // than let that be a silent gap, name every record that tried to set a key,
+  // is not winning one now, and has no ledger entry at all. One info line, not
+  // N criticals: most of them are pre-existing substrate, and pretending
+  // otherwise would train readers to ignore the finding that matters.
+  const contenders = new Set(winners);
+  for (const list of Object.values(folded.losers ?? {})) for (const id of list) contenders.add(id);
+  const unaccounted = [...contenders]
+    .filter((id) => !winners.includes(id) && !prov.has(id))
+    .sort(cmpCodePoint);
+  if (unaccounted.length) {
+    findings.push(
+      finding("info", "UNACCOUNTED_RECORDS", "records that set keys, are not winning them, and have no ledger entry", `${unaccounted.join(", ")} — each of these tried to set at least one key and lost the fold. Whether it ever WON is unanswerable here: this check reads the present, and nothing recorded the past. That is a gap in the evidence, not an accusation.`, {
+        records: unaccounted,
+        question: "Q1",
+        effect: "blind spot, stated rather than hidden",
+      }),
+    );
   }
 
   // ---- 3. Q2 — authorisations that did not become outcomes -----------------
@@ -1434,6 +1461,14 @@ export function selftest() {
     const p = { id: "n", key: "x", record: { parents: ["r"] }, read: {} };
     assert.equal(gateDecide(p, { fixture: { n: { apply: 0.07, parent: 0.9 } } }).action, "review");
   });
+  it("a FUNCTION fixture is accepted (the shape liveGate uses)", () => {
+    const p = { id: "n", key: "x", record: { parents: ["r"] }, read: {} };
+    assert.equal(gateDecide(p, { fixture: () => ({ apply: 0.93, parent: 0.96 }) }).action, "act");
+    // and a keyed fixture for the SAME proposal still wins when the key matches
+    assert.equal(gateDecide(p, { fixture: { n: { apply: 0.93, parent: 0.96 } } }).action, "act");
+    // a keyed fixture MISSING the key must fail closed, not guess
+    assert.equal(gateDecide(p, { fixture: { other: { apply: 0.99, parent: 0.99 } } }).action, "block");
+  });
   it("confident on both acts", () => {
     const p = { id: "n", key: "x", record: { parents: ["r"] }, read: {} };
     assert.equal(gateDecide(p, { fixture: { n: { apply: 0.93, parent: 0.96 } } }).action, "act");
@@ -1454,8 +1489,8 @@ export function selftest() {
   const res = check(ex.ledger, ex.records);
   const codes = (r) => r.findings.map((f) => `${f.code}:${f.record_id ?? f.key ?? ""}`);
 
-  it("the worked example finds exactly the seeded problems", () => {
-    assert.deepEqual(codes(res).sort(), [
+  it("the worked example finds exactly the seeded problems (above info)", () => {
+    assert.deepEqual(codes(res).filter((c) => !c.startsWith("UNACCOUNTED_RECORDS")).sort(), [
       "AUTHORISED_BUT_LOST:nudge-0009",
       "AUTHORISED_NEVER_LANDED:nudge-0011",
       "DECLARED_OVERRIDE:override-0008",
@@ -1463,6 +1498,16 @@ export function selftest() {
       "OUTCOME_CLAIM_FALSE:nudge-0009",
       "SILENT_LANDING:override-0007",
     ].sort());
+  });
+  it("the check names its own blind spot: unaccounted non-winners", () => {
+    // A record that landed and was LATER displaced is not a winner now, so
+    // Q1 cannot see it. The check must say so rather than let the gap hide.
+    const f = res.findings.find((x) => x.code === "UNACCOUNTED_RECORDS");
+    assert.ok(f, "the blind spot must be reported");
+    assert.equal(f.severity, "info");
+    assert.deepEqual(f.records, ["task-0001", "task-0002", "task-0004", "witness-0003"]);
+    // and it must not be counted as a problem: exit status ignores info
+    assert.equal(res.counts.critical + res.counts.major, 4);
   });
   it("Q1 catches the silent override", () => {
     const f = res.findings.find((x) => x.code === "SILENT_LANDING");
